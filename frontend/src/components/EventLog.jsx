@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Filter, Download, Loader2 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const EventLog = () => {
   const [events, setEvents] = useState([]);
+  const [cameraFilter, setCameraFilter] = useState('ALL');
+  const [objectFilter, setObjectFilter] = useState('ALL');
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -20,18 +25,154 @@ const EventLog = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Helper function to extract just the filename from a file path
   const getFilename = (path) => {
     if (!path) return null;
     return path.split(/[\\/]/).pop();
   };
 
+  const uniqueCameras = ['ALL', ...new Set(events.map(e => e.camera_id))];
+  const uniqueObjects = ['ALL', ...new Set(events.map(e => e.object_type))];
+
+  const filteredEvents = events.filter(event => {
+    const matchCamera = cameraFilter === 'ALL' || event.camera_id === cameraFilter;
+    const matchObject = objectFilter === 'ALL' || event.object_type === objectFilter;
+    return matchCamera && matchObject;
+  });
+
+  // Helper function to convert image URLs to Base64 for the PDF
+  const getBase64ImageFromUrl = async (url) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error("Failed to load image for PDF:", e);
+      return null;
+    }
+  };
+
+  const exportToPDF = async () => {
+    setIsExporting(true); // Show loading state
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setTextColor(220, 38, 38); 
+    doc.text("TRINETRA X - Critical Incident Report", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+    doc.text(`Active Filters - Camera: ${cameraFilter} | Object: ${objectFilter}`, 14, 36);
+
+    const tableColumn = ["EVIDENCE", "TIME", "EVENT ID", "CAMERA", "OBJECT"];
+    const tableRows = [];
+    const base64Images = []; // Array to store our fetched images
+
+    // 1. Prepare data and fetch all images
+    for (const event of filteredEvents) {
+      let imgData = null;
+      if (event.snapshot_path) {
+        const filename = getFilename(event.snapshot_path);
+        imgData = await getBase64ImageFromUrl(`http://127.0.0.1:5000/api/snapshots/${filename}`);
+      }
+      base64Images.push(imgData);
+      
+      tableRows.push([
+        "", // Leave the first cell blank, we will draw the image over it later!
+        event.timestamp,
+        event.event_id,
+        event.camera_id,
+        event.object_type.toUpperCase()
+      ]);
+    }
+
+    // 2. Generate the table with AutoTable
+    doc.autoTable({
+      head: [tableColumn],
+      body: tableRows,
+      startY: 42,
+      theme: 'grid',
+      styles: { fontSize: 10, valign: 'middle' },
+      headStyles: { fillColor: [30, 41, 59] },
+      columnStyles: { 
+        0: { cellWidth: 40, minCellHeight: 25 } // Make the Evidence column wider and taller
+      },
+      // 3. Hook to inject the images into the blank cells
+      didDrawCell: function (data) {
+        if (data.column.index === 0 && data.cell.section === 'body') {
+          const imgData = base64Images[data.row.index];
+          if (imgData) {
+            // Draw image slightly inset from the cell borders (x+2, y+2, width 36, height 21)
+            doc.addImage(imgData, 'JPEG', data.cell.x + 2, data.cell.y + 2, 36, 21);
+          }
+        }
+      }
+    });
+
+    doc.save(`TRINETRA_Report_${new Date().getTime()}.pdf`);
+    setIsExporting(false); // Hide loading state
+  };
+
   return (
     <div style={{ backgroundColor: '#1e293b', borderRadius: '8px', border: '1px solid #334155', padding: '20px' }}>
-      <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <AlertCircle color="#ef4444" size={20} />
-        LIVE INCIDENT FEED
-      </h2>
+      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <AlertCircle color="#ef4444" size={20} />
+          LIVE INCIDENT FEED
+        </h2>
+
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+          <Filter size={16} color="#94a3b8" />
+          
+          <select 
+            value={cameraFilter} 
+            onChange={(e) => setCameraFilter(e.target.value)}
+            style={{ backgroundColor: '#0f172a', color: '#f8fafc', border: '1px solid #475569', padding: '8px 12px', borderRadius: '4px', fontSize: '14px', outline: 'none', cursor: 'pointer' }}
+          >
+            {uniqueCameras.map(cam => (
+              <option key={cam} value={cam}>{cam === 'ALL' ? 'All Cameras' : cam}</option>
+            ))}
+          </select>
+
+          <select 
+            value={objectFilter} 
+            onChange={(e) => setObjectFilter(e.target.value)}
+            style={{ backgroundColor: '#0f172a', color: '#f8fafc', border: '1px solid #475569', padding: '8px 12px', borderRadius: '4px', fontSize: '14px', outline: 'none', cursor: 'pointer' }}
+          >
+            {uniqueObjects.map(obj => (
+              <option key={obj} value={obj}>{obj === 'ALL' ? 'All Objects' : obj.toUpperCase()}</option>
+            ))}
+          </select>
+
+          <button 
+            onClick={exportToPDF}
+            disabled={isExporting}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isExporting ? '#64748b' : '#3b82f6', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '4px', fontSize: '14px', fontWeight: 'bold', cursor: isExporting ? 'not-allowed' : 'pointer', transition: 'background-color 0.2s' }}
+          >
+            {isExporting ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+            {isExporting ? 'GENERATING...' : 'EXPORT PDF'}
+          </button>
+        </div>
+      </div>
+
+      <style>
+        {`
+          .animate-spin {
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+        `}
+      </style>
 
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -45,28 +186,27 @@ const EventLog = () => {
             </tr>
           </thead>
           <tbody>
-            {events.length === 0 ? (
+            {filteredEvents.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>No events recorded yet.</td>
+                <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#64748b' }}>
+                  No matching events found.
+                </td>
               </tr>
             ) : (
-              events.map((event, index) => (
+              filteredEvents.map((event, index) => (
                 <tr key={index} style={{ borderBottom: '1px solid #334155', backgroundColor: index % 2 === 0 ? 'transparent' : '#0f172a' }}>
-                  
-                  {/* NEW: Evidence Thumbnail Column */}
                   <td style={{ padding: '12px' }}>
                     {event.snapshot_path ? (
                       <img 
                         src={`http://127.0.0.1:5000/api/snapshots/${getFilename(event.snapshot_path)}`} 
                         alt="Evidence Snapshot" 
                         style={{ height: '40px', width: '70px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #475569' }}
-                        onError={(e) => { e.target.style.display = 'none'; }} // Hide if image broken
+                        onError={(e) => { e.target.style.display = 'none'; }}
                       />
                     ) : (
                       <span style={{ color: '#64748b', fontSize: '12px' }}>No Image</span>
                     )}
                   </td>
-
                   <td style={{ padding: '12px', fontSize: '14px', color: '#cbd5e1' }}>{event.timestamp}</td>
                   <td style={{ padding: '12px', fontSize: '14px', fontFamily: 'monospace', color: '#3b82f6' }}>{event.event_id}</td>
                   <td style={{ padding: '12px', fontSize: '14px' }}>{event.camera_id}</td>

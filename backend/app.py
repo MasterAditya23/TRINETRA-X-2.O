@@ -20,8 +20,8 @@ CORS(app)
 # Change '0' to your phone's IP Webcam URL when ready!
 # Example: 'CAM-02': 'http://192.168.1.5:8080/video'
 CAMERAS = {
-    'CAM-01': 0, 
-    'CAM-02': 'http://10.179.146.133:8080/video', 
+    'CAM-01': None, 
+    'CAM-02': 'http://192.168.137.107:8080/video', 
     'CAM-03': None, 
     'CAM-04': None  
 }
