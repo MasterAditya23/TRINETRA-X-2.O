@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+build/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Data & Models (Keep out of git to avoid massive repos)
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/demo/*
+!data/demo/.gitkeep
+*.pt
+*.onnx
+*.weights
