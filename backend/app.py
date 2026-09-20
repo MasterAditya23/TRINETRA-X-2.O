@@ -1,4 +1,5 @@
-from flask import Flask, jsonify, request
+import os
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import uuid
 from datetime import datetime
@@ -6,6 +7,9 @@ from database.db import get_db_connection
 
 app = Flask(__name__)
 CORS(app)
+
+# Helper to find our project root directory
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -20,7 +24,6 @@ def health_check():
     return jsonify({
         "status": "online",
         "service": "TRINETRA X Backend",
-        "vision_pipeline": "disconnected",
         "database": db_status
     }), 200
 
@@ -46,53 +49,39 @@ def create_event():
         conn.commit()
         conn.close()
         
-        print(f"[API INFO] Stored Event: {event_id} from {camera_id}")
+        print(f"[API INFO] Stored Event: {event_id}")
         return jsonify({"message": "Event stored successfully", "event_id": event_id}), 201
     except Exception as e:
         print(f"[API ERROR] Database insertion failed: {e}")
         return jsonify({"error": "Failed to store event"}), 500
 
-# NEW: API Endpoint to retrieve all events (ordered newest first)
 @app.route('/api/events', methods=['GET'])
 def get_events():
     try:
         conn = get_db_connection()
-        # Fetch all events, ordering by timestamp descending (newest at the top)
         events = conn.execute('SELECT * FROM events ORDER BY timestamp DESC').fetchall()
         conn.close()
-        
-        # Convert SQLite Row objects to a list of Python dictionaries
-        events_list = [dict(event) for event in events]
-        return jsonify(events_list), 200
+        return jsonify([dict(event) for event in events]), 200
     except Exception as e:
-        print(f"[API ERROR] Failed to fetch events: {e}")
         return jsonify({"error": "Failed to fetch events"}), 500
 
-# NEW: API Endpoint to get system statistics for the dashboard
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     try:
         conn = get_db_connection()
-        
-        # Count total intrusions
         total_events = conn.execute('SELECT COUNT(*) FROM events').fetchone()[0]
-        
-        # Count total people detected in intrusions
         person_events = conn.execute("SELECT COUNT(*) FROM events WHERE object_type = 'person'").fetchone()[0]
-        
-        # Count total active cameras
         active_cameras = conn.execute("SELECT COUNT(*) FROM cameras WHERE status = 'ONLINE'").fetchone()[0]
-        
         conn.close()
-        
-        return jsonify({
-            "total_intrusions": total_events,
-            "person_intrusions": person_events,
-            "active_cameras": active_cameras
-        }), 200
+        return jsonify({"total_intrusions": total_events, "person_intrusions": person_events, "active_cameras": active_cameras}), 200
     except Exception as e:
-        print(f"[API ERROR] Failed to fetch stats: {e}")
         return jsonify({"error": "Failed to fetch stats"}), 500
+
+# NEW: API Endpoint to securely serve snapshot images to the frontend
+@app.route('/api/snapshots/<filename>', methods=['GET'])
+def get_snapshot(filename):
+    snapshots_dir = os.path.join(BASE_DIR, 'data', 'snapshots')
+    return send_from_directory(snapshots_dir, filename)
 
 if __name__ == '__main__':
     print("[INFO] Starting TRINETRA X Backend Server...")
