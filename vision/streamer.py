@@ -43,6 +43,8 @@ def generate_frames(camera_source, camera_id):
         camera_source = 0
         
     cap = cv2.VideoCapture(camera_source)
+    # --- ADD THIS LINE TO KILL THE QUEUE DELAY ---
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -51,6 +53,13 @@ def generate_frames(camera_source, camera_id):
     COOLDOWN_SECONDS = 5
 
     while True:
+# --- NEW HACK: DRAIN THE BUFFER ---
+        # If using a phone IP camera, skip 2 frames to always stay on the newest frame
+        if str(camera_source) != '0':
+            cap.grab()
+            cap.grab()
+            
+        # ONLY ONE cap.read() HERE
         ret, frame = cap.read()
         if not ret:
             time.sleep(2)
@@ -68,7 +77,8 @@ def generate_frames(camera_source, camera_id):
         cv2.putText(frame, "RESTRICTED ZONE ->", (FENCE_X + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         cv2.putText(frame, f"{camera_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
 
-        results = model.track(frame, persist=True, classes=[0, 2, 3, 5, 7], verbose=False)
+# OPTIMIZATION: imgsz=320 forces the AI to process smaller chunks, drastically improving FPS
+        results = model.track(frame, persist=True, classes=[0, 2, 3, 5, 7], verbose=False, imgsz=320)
         
         if results[0].boxes is not None and results[0].boxes.id is not None:
             boxes = results[0].boxes.xyxy.cpu().numpy()
