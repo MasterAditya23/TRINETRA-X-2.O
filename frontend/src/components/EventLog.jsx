@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AlertCircle, Filter, Download, Loader2 } from 'lucide-react';
+import { AlertCircle, Filter, Download, Loader2, Moon } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -10,8 +10,9 @@ const [events, setEvents] = useState([]);
   const [objectFilter, setObjectFilter] = useState('ALL');
   const [dateFilter, setDateFilter] = useState(''); // NEW: Stores the selected date
   const [isExporting, setIsExporting] = useState(false);
+  const [isNightVision, setIsNightVision] = useState(false);
 
-  useEffect(() => {
+  useEffect (() => {
     const fetchEvents = async () => {
       try {
         const response = await axios.get('http://127.0.0.1:5000/api/events');
@@ -25,6 +26,19 @@ const [events, setEvents] = useState([]);
     const interval = setInterval(fetchEvents, 3000);
     return () => clearInterval(interval);
   }, []);
+
+  // === PASTE IT RIGHT HERE ===
+  const handleNightVisionToggle = async () => {
+    const newState = !isNightVision;
+    setIsNightVision(newState);
+    try {
+      await axios.post('http://127.0.0.1:5000/api/settings/nightvision', { enabled: newState });
+    } catch (error) {
+      console.error("Failed to toggle night vision:", error);
+      setIsNightVision(!newState); // Revert UI if API fails
+    }
+  };
+  // ===========================
 
   const getFilename = (path) => {
     if (!path) return null;
@@ -188,7 +202,14 @@ const filteredEvents = events.filter(event => {
               Clear Date
             </button>
           )}
-
+           {/* NEW: Night Vision Toggle */}
+          <button 
+            onClick={handleNightVisionToggle}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: isNightVision ? '#22c55e' : '#334155', color: isNightVision ? '#0f172a' : '#f8fafc', border: '1px solid #475569', padding: '8px 16px', borderRadius: '4px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}
+          >
+            <Moon size={16} fill={isNightVision ? "#0f172a" : "none"} />
+            {isNightVision ? 'NIGHT MODE: ON' : 'NIGHT MODE'}
+          </button>
           <button 
             onClick={exportToPDF}
             disabled={isExporting}

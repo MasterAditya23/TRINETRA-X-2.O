@@ -2,6 +2,7 @@ import cv2
 import time
 import os
 import requests
+import numpy as np
 from datetime import datetime
 from ultralytics import YOLO
 
@@ -9,16 +10,39 @@ print("[INFO] Loading YOLOv8 model for Multi-Camera Stream...")
 model = YOLO("yolov8n.pt")
 API_URL = "http://127.0.0.1:5000/api/events"
 
+# NEW: Global state to control Night Vision from Flask
+CAMERA_SETTINGS = {
+    "night_vision": False
+}
+
+def apply_night_vision(frame):
+    """Applies low-light enhancement and tactical green phosphor effect."""
+    # 1. Gamma Correction (boosts dark shadows without blowing out highlights)
+    gamma = 1.8
+    inv_gamma = 1.0 / gamma
+    table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
+    bright_frame = cv2.LUT(frame, table)
+
+    # 2. CLAHE (Adaptive Contrast)
+    lab = cv2.cvtColor(bright_frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced_l = clahe.apply(l)
+    enhanced_lab = cv2.merge((enhanced_l, a, b))
+    enhanced_bgr = cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+
+    # 3. Tactical Green Effect
+    gray = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2GRAY)
+    tactical = np.zeros_like(enhanced_bgr)
+    tactical[:, :, 1] = gray # Map intensity strictly to Green channel
+    tactical[:, :, 0] = (gray * 0.15).astype("uint8") # Subtle blue ambient
+    return tactical
+
 def generate_frames(camera_source, camera_id):
-    """Generator that yields annotated video frames for a specific camera."""
-    
-    # If the source is '0' (string), convert it to int 0 for local webcam
     if str(camera_source) == '0':
         camera_source = 0
         
     cap = cv2.VideoCapture(camera_source)
-    
-    # Lower resolution for performance when running multiple cameras
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
@@ -29,13 +53,17 @@ def generate_frames(camera_source, camera_id):
     while True:
         ret, frame = cap.read()
         if not ret:
-            print(f"[WARNING] Lost connection to {camera_id}. Retrying...")
             time.sleep(2)
             cap = cv2.VideoCapture(camera_source)
             continue
 
+        # NEW: Apply Night Vision if toggled ON
+        if CAMERA_SETTINGS.get("night_vision", False):
+            frame = apply_night_vision(frame)
+            cv2.putText(frame, "TACTICAL NIGHT VISION: ON", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
         # Draw Virtual Fence
-        FENCE_X = int(frame.shape[1] / 2) # Middle of the frame dynamically
+        FENCE_X = int(frame.shape[1] / 2)
         cv2.line(frame, (FENCE_X, 0), (FENCE_X, frame.shape[0]), (255, 0, 0), 2)
         cv2.putText(frame, "RESTRICTED ZONE ->", (FENCE_X + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         cv2.putText(frame, f"{camera_id}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
@@ -74,16 +102,12 @@ def generate_frames(camera_source, camera_id):
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             filename = f"{camera_id}_{timestamp}_id{track_id}.jpg"
                             
-                            # ABSOLUTE DIRECTORY CREATION FIX
                             BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
                             SNAPSHOT_DIR = os.path.join(BASE_DIR, "data", "snapshots")
                             os.makedirs(SNAPSHOT_DIR, exist_ok=True) 
-                            
                             filepath = os.path.join(SNAPSHOT_DIR, filename)
                             
                             cv2.putText(frame, "INTRUSION DETECTED", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                            
-                            # SAVE IMAGE
                             success = cv2.imwrite(filepath, frame)
                             if success:
                                 print(f"[INFO] Evidence Snapshot saved successfully: {filename}")

@@ -9,7 +9,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(BASE_DIR)
 
 from database.db import get_db_connection
-from vision.streamer import generate_frames
+from vision.streamer import generate_frames, CAMERA_SETTINGS
 
 app = Flask(__name__)
 CORS(app)
@@ -20,11 +20,20 @@ CORS(app)
 # Change '0' to your phone's IP Webcam URL when ready!
 # Example: 'CAM-02': 'http://192.168.1.5:8080/video'
 CAMERAS = {
-    'CAM-01': 'http://10.60.2.99:8080/video', 
+    'CAM-01': 'http://10.236.184.74:8080/video', 
     'CAM-02': None, 
     'CAM-03': None, 
     'CAM-04': None  
 }
+
+@app.route('/api/settings/nightvision', methods=['POST'])
+def toggle_night_vision():
+    data = request.json
+    is_enabled = data.get("enabled", False)
+    CAMERA_SETTINGS["night_vision"] = is_enabled
+    status = "ON" if is_enabled else "OFF"
+    print(f"[INFO] Tactical Night Vision Mode: {status}")
+    return jsonify({"message": f"Night vision {status}", "enabled": is_enabled}), 200
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
