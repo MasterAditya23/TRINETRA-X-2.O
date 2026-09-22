@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { AlertCircle, Filter, Download, Loader2 } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const EventLog = () => {
-  const [events, setEvents] = useState([]);
+const [events, setEvents] = useState([]);
   const [cameraFilter, setCameraFilter] = useState('ALL');
   const [objectFilter, setObjectFilter] = useState('ALL');
+  const [dateFilter, setDateFilter] = useState(''); // NEW: Stores the selected date
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
@@ -33,10 +34,16 @@ const EventLog = () => {
   const uniqueCameras = ['ALL', ...new Set(events.map(e => e.camera_id))];
   const uniqueObjects = ['ALL', ...new Set(events.map(e => e.object_type))];
 
-  const filteredEvents = events.filter(event => {
+const filteredEvents = events.filter(event => {
     const matchCamera = cameraFilter === 'ALL' || event.camera_id === cameraFilter;
     const matchObject = objectFilter === 'ALL' || event.object_type === objectFilter;
-    return matchCamera && matchObject;
+    
+    // Extract just the "YYYY-MM-DD" part from the database timestamp
+    const eventDate = event.timestamp ? event.timestamp.split(' ')[0] : '';
+    // Match the date only if a date is actually selected in the calendar
+    const matchDate = dateFilter === '' || eventDate === dateFilter;
+    
+    return matchCamera && matchObject && matchDate;
   });
 
   // Helper function to convert image URLs to Base64 for the PDF
@@ -102,8 +109,8 @@ const EventLog = () => {
         ]);
       }
 
-      // 2. Generate the table with AutoTable
-      doc.autoTable({
+// 2. Generate the table with AutoTable (UPDATED SYNTAX)
+      autoTable(doc, {
         head: [tableColumn],
         body: tableRows,
         startY: 42,
@@ -163,6 +170,24 @@ const EventLog = () => {
               <option key={obj} value={obj}>{obj === 'ALL' ? 'All Objects' : obj.toUpperCase()}</option>
             ))}
           </select>
+
+          {/* NEW: Date Picker UI */}
+          <input 
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            style={{ backgroundColor: '#0f172a', color: '#f8fafc', border: '1px solid #475569', padding: '8px 12px', borderRadius: '4px', fontSize: '14px', outline: 'none', cursor: 'pointer', colorScheme: 'dark' }}
+          />
+
+          {/* NEW: Clear Date Button (Only shows if a date is selected) */}
+          {dateFilter && (
+            <button 
+              onClick={() => setDateFilter('')}
+              style={{ backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '8px 12px', borderRadius: '4px', fontSize: '14px', cursor: 'pointer' }}
+            >
+              Clear Date
+            </button>
+          )}
 
           <button 
             onClick={exportToPDF}
