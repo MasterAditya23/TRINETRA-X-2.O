@@ -43,7 +43,15 @@ const EventLog = () => {
   const getBase64ImageFromUrl = async (url) => {
     try {
       const response = await fetch(url);
+      
+      // Stop if Flask returns a 404 Error (Missing image)
+      if (!response.ok) return null; 
+      
       const blob = await response.blob();
+      
+      // Ensure it is actually an image before parsing to prevent jsPDF crash
+      if (!blob.type.startsWith('image/')) return null; 
+
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
@@ -58,65 +66,70 @@ const EventLog = () => {
 
   const exportToPDF = async () => {
     setIsExporting(true); // Show loading state
-    const doc = new jsPDF();
     
-    // Header
-    doc.setFontSize(18);
-    doc.setTextColor(220, 38, 38); 
-    doc.text("TRINETRA X - Critical Incident Report", 14, 22);
-    
-    doc.setFontSize(11);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
-    doc.text(`Active Filters - Camera: ${cameraFilter} | Object: ${objectFilter}`, 14, 36);
-
-    const tableColumn = ["EVIDENCE", "TIME", "EVENT ID", "CAMERA", "OBJECT"];
-    const tableRows = [];
-    const base64Images = []; // Array to store our fetched images
-
-    // 1. Prepare data and fetch all images
-    for (const event of filteredEvents) {
-      let imgData = null;
-      if (event.snapshot_path) {
-        const filename = getFilename(event.snapshot_path);
-        imgData = await getBase64ImageFromUrl(`http://127.0.0.1:5000/api/snapshots/${filename}`);
-      }
-      base64Images.push(imgData);
+    try {
+      const doc = new jsPDF();
       
-      tableRows.push([
-        "", // Leave the first cell blank, we will draw the image over it later!
-        event.timestamp,
-        event.event_id,
-        event.camera_id,
-        event.object_type.toUpperCase()
-      ]);
-    }
+      // Header
+      doc.setFontSize(18);
+      doc.setTextColor(220, 38, 38); 
+      doc.text("TRINETRA X - Critical Incident Report", 14, 22);
+      
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+      doc.text(`Active Filters - Camera: ${cameraFilter} | Object: ${objectFilter}`, 14, 36);
 
-    // 2. Generate the table with AutoTable
-    doc.autoTable({
-      head: [tableColumn],
-      body: tableRows,
-      startY: 42,
-      theme: 'grid',
-      styles: { fontSize: 10, valign: 'middle' },
-      headStyles: { fillColor: [30, 41, 59] },
-      columnStyles: { 
-        0: { cellWidth: 40, minCellHeight: 25 } // Make the Evidence column wider and taller
-      },
-      // 3. Hook to inject the images into the blank cells
-      didDrawCell: function (data) {
-        if (data.column.index === 0 && data.cell.section === 'body') {
-          const imgData = base64Images[data.row.index];
-          if (imgData) {
-            // Draw image slightly inset from the cell borders (x+2, y+2, width 36, height 21)
-            doc.addImage(imgData, 'JPEG', data.cell.x + 2, data.cell.y + 2, 36, 21);
+      const tableColumn = ["EVIDENCE", "TIME", "EVENT ID", "CAMERA", "OBJECT"];
+      const tableRows = [];
+      const base64Images = []; 
+
+      // 1. Prepare data and fetch all images
+      for (const event of filteredEvents) {
+        let imgData = null;
+        if (event.snapshot_path) {
+          const filename = getFilename(event.snapshot_path);
+          imgData = await getBase64ImageFromUrl(`http://127.0.0.1:5000/api/snapshots/${filename}`);
+        }
+        base64Images.push(imgData);
+        
+        tableRows.push([
+          "", // Leave blank for the image
+          event.timestamp,
+          event.event_id,
+          event.camera_id,
+          event.object_type.toUpperCase()
+        ]);
+      }
+
+      // 2. Generate the table with AutoTable
+      doc.autoTable({
+        head: [tableColumn],
+        body: tableRows,
+        startY: 42,
+        theme: 'grid',
+        styles: { fontSize: 10, valign: 'middle' },
+        headStyles: { fillColor: [30, 41, 59] },
+        columnStyles: { 
+          0: { cellWidth: 40, minCellHeight: 25 } 
+        },
+        didDrawCell: function (data) {
+          if (data.column.index === 0 && data.cell.section === 'body') {
+            const imgData = base64Images[data.row.index];
+            if (imgData) {
+              doc.addImage(imgData, 'JPEG', data.cell.x + 2, data.cell.y + 2, 36, 21);
+            }
           }
         }
-      }
-    });
+      });
 
-    doc.save(`TRINETRA_Report_${new Date().getTime()}.pdf`);
-    setIsExporting(false); // Hide loading state
+      doc.save(`TRINETRA_Report_${new Date().getTime()}.pdf`);
+    } catch (error) {
+      console.error("Critical error generating PDF:", error);
+      alert("An error occurred while generating the PDF. Check the console for details.");
+    } finally {
+      setIsExporting(false); // This guarantees the button always resets
+    }
   };
 
   return (

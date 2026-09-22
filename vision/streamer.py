@@ -73,10 +73,20 @@ def generate_frames(camera_source, camera_id):
                         if not is_in_cooldown:
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             filename = f"{camera_id}_{timestamp}_id{track_id}.jpg"
-                            filepath = os.path.join("data", "snapshots", filename)
+                            
+                            # ABSOLUTE DIRECTORY CREATION FIX
+                            BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+                            SNAPSHOT_DIR = os.path.join(BASE_DIR, "data", "snapshots")
+                            os.makedirs(SNAPSHOT_DIR, exist_ok=True) 
+                            
+                            filepath = os.path.join(SNAPSHOT_DIR, filename)
                             
                             cv2.putText(frame, "INTRUSION DETECTED", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                            cv2.imwrite(filepath, frame)
+                            
+                            # SAVE IMAGE
+                            success = cv2.imwrite(filepath, frame)
+                            if success:
+                                print(f"[INFO] Evidence Snapshot saved successfully: {filename}")
                             
                             event_payload = {
                                 "camera_id": camera_id,

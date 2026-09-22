@@ -21,7 +21,7 @@ CORS(app)
 # Example: 'CAM-02': 'http://192.168.1.5:8080/video'
 CAMERAS = {
     'CAM-01': None, 
-    'CAM-02': 'http://192.168.137.107:8080/video', 
+    'CAM-02': None, 
     'CAM-03': None, 
     'CAM-04': None  
 }
