@@ -20,10 +20,10 @@ CORS(app)
 # Change '0' to your phone's IP Webcam URL when ready!
 # Example: 'CAM-02': 'http://192.168.1.5:8080/video'
 CAMERAS = {
-    'CAM-01': 'http://10.236.184.74:8080/video', 
-    'CAM-02': None, 
+    'CAM-01':None , 
+    'CAM-02': 'http://10.17.176.71:8080/video', 
     'CAM-03': None, 
-    'CAM-04': None  
+    'CAM-04':  None   
 }
 
 @app.route('/api/settings/nightvision', methods=['POST'])
